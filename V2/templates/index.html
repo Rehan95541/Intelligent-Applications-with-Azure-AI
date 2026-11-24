@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Feedback Intelligence — V2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-inner">
+        <div class="brand">
+            <div class="brand-icon">CF</div>
+            <div class="brand-text">
+                <h1>Customer Feedback Intelligence</h1>
+                <p class="subtitle">V2 — analysis dashboard + RAG assistant + export</p>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container main-content">
+
+    <section class="card upload-section">
+        <div class="upload-inner">
+            <div class="upload-text">
+                <h2>Upload Feedback</h2>
+                <p class="muted">
+                    CSV columns: <code>customer_id</code>, <code>product</code>, <code>feedback</code>. Max 5 MB.
+                </p>
+            </div>
+            <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form" id="uploadForm">
+                <label for="file" class="file-input-wrapper">
+                    <input type="file" name="file" id="file" accept=".csv" required>
+                    <span class="file-input-button">Choose File</span>
+                    <span class="file-input-name" id="fileName">No file chosen</span>
+                </label>
+                <button type="submit" class="btn-primary" id="analyzeBtn">
+                    <span class="btn-text">Analyze Feedback</span>
+                </button>
+            </form>
+        </div>
+
+        {% if error %}<div class="alert alert-error"><strong>Error:</strong> {{ error }}</div>{% endif %}
+        {% if message %}<div class="alert alert-success"><strong>Success:</strong> {{ message }}</div>{% endif %}
+    </section>
+
+    {% if kpis %}
+
+    <section class="card export-bar">
+        <span class="export-label">Export:</span>
+        <a href="/export/pptx" class="btn-export">PowerPoint</a>
+        <a href="/export/pdf" class="btn-export">PDF</a>
+        <a href="/export/csv" class="btn-export">CSV</a>
+        <a href="/export/json" class="btn-export">JSON</a>
+    </section>
+
+    {% if executive_report %}
+    <section class="executive-summary">
+        <div class="section-heading">
+            <h2>{{ executive_report.title }}</h2>
+            <span class="method-badge">{{ executive_report.method }}</span>
+        </div>
+        <div class="summary-card">
+            <h3>Overview</h3>
+            <p>{{ executive_report.overview }}</p>
+        </div>
+        {% if executive_report.recommendations %}
+        <div class="summary-card recommendations-card">
+            <h3>Recommendations</h3>
+            <ol class="recommendation-list">
+                {% for rec in executive_report.recommendations %}
+                <li>{{ rec }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="kpi-section">
+        <div class="section-heading"><h2>Business KPIs</h2></div>
+        <div class="kpi-grid">
+            <div class="kpi-card"><span class="kpi-label">Total</span><span class="kpi-value">{{ kpis.total_feedback }}</span></div>
+            <div class="kpi-card"><span class="kpi-label">Customers</span><span class="kpi-value">{{ kpis.unique_customers }}</span></div>
+            <div class="kpi-card kpi-positive"><span class="kpi-label">Positive</span><span class="kpi-value">{{ kpis.positive_rate }}<small>%</small></span></div>
+            <div class="kpi-card kpi-neutral"><span class="kpi-label">Neutral</span><span class="kpi-value">{{ kpis.neutral_rate }}<small>%</small></span></div>
+            <div class="kpi-card kpi-negative"><span class="kpi-label">Negative</span><span class="kpi-value">{{ kpis.negative_rate }}<small>%</small></span></div>
+            <div class="kpi-card"><span class="kpi-label">Balance</span><span class="kpi-value">{{ kpis.sentiment_balance }}</span></div>
+            <div class="kpi-card"><span class="kpi-label">Avg Score</span><span class="kpi-value">{{ kpis.average_sentiment_score }}</span></div>
+        </div>
+    </section>
+
+    <section class="charts-section">
+        <div class="section-heading"><h2>Visual Analytics</h2></div>
+        <div class="charts-grid">
+            <div class="chart-card"><h3>Sentiment Distribution</h3><div class="chart-wrap"><canvas id="sentimentChart"></canvas></div></div>
+            <div class="chart-card"><h3>Product Comparison</h3><div class="chart-wrap"><canvas id="productChart"></canvas></div></div>
+            <div class="chart-card"><h3>Complaint Categories</h3><div class="chart-wrap"><canvas id="complaintChart"></canvas></div></div>
+            <div class="chart-card"><h3>Top Keywords</h3><div class="chart-wrap"><canvas id="keywordChart"></canvas></div></div>
+        </div>
+    </section>
+
+    <section class="rag-section card">
+        <div class="section-heading">
+            <h2>RAG Assistant</h2>
+            <span class="method-badge" id="ragBackendLabel">Loading...</span>
+        </div>
+        <p class="muted rag-help">
+            Ask a question about the uploaded feedback. Answers are grounded in retrieved reviews — sources are shown below.
+        </p>
+
+        <div class="rag-filters">
+            <div class="filter-group">
+                <label>Product</label>
+                <select id="ragProductFilter">
+                    <option value="">All products</option>
+                    {% for p in rag_filters.products %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Sentiment</label>
+                <select id="ragSentimentFilter">
+                    <option value="">All</option>
+                    {% for s in rag_filters.sentiments %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Category</label>
+                <select id="ragCategoryFilter">
+                    <option value="">All</option>
+                    {% for c in rag_filters.categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Top-K</label>
+                <select id="ragTopK">
+                    <option value="3">3</option>
+                    <option value="5" selected>5</option>
+                    <option value="10">10</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="rag-threshold">
+            <label>Similarity threshold: <strong id="thresholdValue">0.15</strong></label>
+            <input type="range" id="ragThreshold" min="0" max="0.9" step="0.05" value="0.15">
+            <p class="muted threshold-hint">
+                Lower = more results (loosely related). Higher = stricter. Recommended 0.10–0.20 for short feedback.
+            </p>
+        </div>
+
+        <div class="rag-examples">
+            <span class="rag-examples-label">Try:</span>
+            <button type="button" class="chip" data-question="What are customers complaining about the most?">Most common complaints</button>
+            <button type="button" class="chip" data-question="What do customers like about the products?">What customers like</button>
+            <button type="button" class="chip" data-question="Are there any problems with delivery or shipping?">Delivery issues</button>
+            <button type="button" class="chip" data-question="What are the main issues with battery or charging?">Battery issues</button>
+        </div>
+
+        <div class="rag-question">
+            <input type="text" id="ragQuestion" placeholder="e.g. What are customers complaining about regarding batteries?" />
+            <button id="ragAskBtn" class="btn-primary">Ask</button>
+        </div>
+
+        <div id="ragAnswerArea" class="rag-answer-area" style="display:none;">
+            <div class="rag-answer">
+                <h3>Answer</h3>
+                <pre id="ragAnswerText" class="rag-answer-text"></pre>
+            </div>
+            <div class="rag-sources">
+                <h3>Sources</h3>
+                <ul id="ragSourcesList" class="rag-sources-list"></ul>
+            </div>
+        </div>
+
+        <div id="ragError" class="alert alert-error" style="display:none;"></div>
+    </section>
+
+    <section class="table-section">
+        <div class="section-heading"><h2>Product Performance</h2></div>
+        <div class="table-wrapper">
+            <table class="sortable" id="productTable">
+                <thead>
+                    <tr>
+                        <th data-sort="text">Product</th>
+                        <th data-sort="num">Total</th>
+                        <th data-sort="num">Positive</th>
+                        <th data-sort="num">Neutral</th>
+                        <th data-sort="num">Negative</th>
+                        <th data-sort="num">Pos %</th>
+                        <th data-sort="num">Neg %</th>
+                        <th data-sort="num">Avg</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in kpis.product_summary %}
+                    <tr>
+                        <td><strong>{{ p.product }}</strong></td>
+                        <td>{{ p.total_feedback }}</td>
+                        <td class="cell-positive">{{ p.positive }}</td>
+                        <td class="cell-neutral">{{ p.neutral }}</td>
+                        <td class="cell-negative">{{ p.negative }}</td>
+                        <td>{{ p.positive_rate }}%</td>
+                        <td>{{ p.negative_rate }}%</td>
+                        <td>{{ p.average_sentiment_score }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="table-section">
+        <div class="section-heading"><h2>Complaint Summary</h2></div>
+        <div class="table-wrapper">
+            <table class="sortable" id="complaintTable">
+                <thead>
+                    <tr>
+                        <th data-sort="text">Category</th>
+                        <th data-sort="num">Count</th>
+                        <th data-sort="num">%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for c in kpis.complaint_summary %}
+                    <tr>
+                        <td><strong>{{ c.category }}</strong></td>
+                        <td>{{ c.count }}</td>
+                        <td>{{ c.percentage }}%</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="table-section">
+        <div class="section-heading">
+            <h2>Detailed Feedback</h2>
+        </div>
+
+        <div class="feedback-controls">
+            <input type="text" id="feedbackSearch" placeholder="Search feedback..." class="search-input">
+            <select id="feedbackSentimentFilter" class="filter-select">
+                <option value="">All sentiments</option>
+                <option value="Positive">Positive</option>
+                <option value="Neutral">Neutral</option>
+                <option value="Negative">Negative</option>
+            </select>
+            <select id="feedbackProductFilter" class="filter-select">
+                <option value="">All products</option>
+                {% for p in rag_filters.products %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+            </select>
+            <span class="feedback-count" id="feedbackCount">{{ records|length }} rows</span>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="feedbackTable" class="sortable">
+                <thead>
+                    <tr>
+                        <th data-sort="text">Customer</th>
+                        <th data-sort="text">Product</th>
+                        <th data-sort="text">Feedback</th>
+                        <th data-sort="text">Sentiment</th>
+                        <th data-sort="num">Score</th>
+                        <th data-sort="text">Complaints</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in records %}
+                    <tr data-sentiment="{{ r.sentiment }}" data-product="{{ r.product }}">
+                        <td>{{ r.customer_id }}</td>
+                        <td>{{ r.product }}</td>
+                        <td class="cell-feedback">{{ r.feedback }}</td>
+                        <td><span class="sentiment-badge sentiment-{{ r.sentiment | lower }}">{{ r.sentiment }}</span></td>
+                        <td>{{ r.sentiment_score }}</td>
+                        <td class="cell-muted">{{ r.complaint_categories | join(', ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="feedbackPagination">
+            <button type="button" class="page-btn" id="prevPage" disabled>‹ Prev</button>
+            <span class="page-info" id="pageInfo">Page 1 of 1</span>
+            <button type="button" class="page-btn" id="nextPage" disabled>Next ›</button>
+        </div>
+    </section>
+
+    <section class="backend-section">
+        <div class="section-heading"><h2>Active Backends</h2></div>
+        <div class="backend-grid">
+            <div class="backend-card"><span class="backend-label">Sentiment</span><span class="backend-value">{{ backend_info.sentiment }}</span></div>
+            <div class="backend-card"><span class="backend-label">Keywords</span><span class="backend-value">{{ backend_info.keywords }}</span></div>
+            <div class="backend-card"><span class="backend-label">Complaints</span><span class="backend-value">{{ backend_info.complaints }}</span></div>
+            <div class="backend-card"><span class="backend-label">Analytics</span><span class="backend-value">{{ backend_info.analytics }}</span></div>
+            <div class="backend-card"><span class="backend-label">Vector Store</span><span class="backend-value">{{ backend_info.rag }}</span></div>
+            <div class="backend-card"><span class="backend-label">LLM</span><span class="backend-value">{{ backend_info.llm }}</span></div>
+        </div>
+    </section>
+
+    {% endif %}
+</main>
+
+<footer class="app-footer"><div class="container"><p>Customer Feedback Intelligence — V2</p></div></footer>
+
+{% if kpis %}
+<script>
+window.dashboardData = {
+    sentiment_counts: {{ kpis.sentiment_counts | tojson }},
+    product_summary: {{ kpis.product_summary | tojson }},
+    complaint_summary: {{ kpis.complaint_summary | tojson }},
+    top_keywords: {{ kpis.top_keywords | tojson }}
+};
+window.ragBackendName = {{ backend_info.llm | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/rag.js') }}"></script>
+{% endif %}
+
+</body>
+</html>

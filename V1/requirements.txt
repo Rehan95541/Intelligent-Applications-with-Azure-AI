@@ -1,0 +1,5 @@
+Flask
+pandas
+vaderSentiment
+yake
+python-dotenv

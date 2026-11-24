@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Feedback Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <!-- ============================================ -->
+    <!-- HEADER                                        -->
+    <!-- ============================================ -->
+    <header class="app-header">
+        <div class="container header-inner">
+            <div class="brand">
+                <div class="brand-icon">CF</div>
+                <div class="brand-text">
+                    <h1>Customer Feedback Intelligence</h1>
+                    <p class="subtitle">
+                        Upload feedback CSV &rarr; sentiment, keywords, complaints, KPIs, executive summary
+                    </p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container main-content">
+
+        <!-- ============================================ -->
+        <!-- UPLOAD SECTION                                -->
+        <!-- ============================================ -->
+        <section class="card upload-section">
+            <div class="upload-inner">
+                <div class="upload-text">
+                    <h2>Upload Feedback</h2>
+                    <p class="muted">
+                        CSV must contain: <code>customer_id</code>,
+                        <code>product</code>, <code>feedback</code>.
+                        Max size 5 MB.
+                    </p>
+                </div>
+
+                <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form">
+                    <label for="file" class="file-input-wrapper">
+                        <input type="file" name="file" id="file" accept=".csv" required>
+                        <span class="file-input-button">Choose File</span>
+                        <span class="file-input-name" id="fileName">No file chosen</span>
+                    </label>
+                    <button type="submit" class="btn-primary">Analyze Feedback</button>
+                </form>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-error">
+                <strong>Error:</strong> {{ error }}
+            </div>
+            {% endif %}
+
+            {% if message %}
+            <div class="alert alert-success">
+                <strong>Success:</strong> {{ message }}
+            </div>
+            {% endif %}
+        </section>
+
+        {% if kpis %}
+
+        <!-- ============================================ -->
+        <!-- EXECUTIVE SUMMARY                              -->
+        <!-- ============================================ -->
+        {% if executive_report %}
+        <section class="executive-summary">
+            <div class="section-heading">
+                <h2>{{ executive_report.title }}</h2>
+                <span class="method-badge">{{ executive_report.method }}</span>
+            </div>
+
+            <div class="summary-grid">
+
+                <div class="summary-card overview-card">
+                    <div class="summary-icon icon-overview">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/>
+                            <path d="M7 14l4-4 4 4 4-6"/>
+                        </svg>
+                    </div>
+                    <div class="summary-body">
+                        <h3>Overview</h3>
+                        <p>{{ executive_report.overview }}</p>
+                    </div>
+                </div>
+
+                {% if executive_report.statistics %}
+                <div class="summary-card stats-card">
+                    <div class="summary-icon icon-stats">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 3v9l6 3"/>
+                        </svg>
+                    </div>
+                    <div class="summary-body">
+                        <h3>Key Statistics</h3>
+                        <ul class="stats-list">
+                            <li><span>Total Feedback</span><strong>{{ executive_report.statistics.total_feedback }}</strong></li>
+                            <li><span class="dot dot-positive"></span><span>Positive</span><strong>{{ executive_report.statistics.positive }} ({{ executive_report.statistics.positive_rate }})</strong></li>
+                            <li><span class="dot dot-neutral"></span><span>Neutral</span><strong>{{ executive_report.statistics.neutral }} ({{ executive_report.statistics.neutral_rate }})</strong></li>
+                            <li><span class="dot dot-negative"></span><span>Negative</span><strong>{{ executive_report.statistics.negative }} ({{ executive_report.statistics.negative_rate }})</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                {% endif %}
+
+            </div>
+
+            {% if executive_report.complaint_insights %}
+            <div class="summary-card full-width">
+                <div class="summary-body">
+                    <h3>Complaint Insights</h3>
+                    <ul class="insight-list">
+                        {% for item in executive_report.complaint_insights %}
+                        <li>
+                            <div class="insight-head">
+                                <strong>{{ item.category }}</strong>
+                                <span class="count-pill">{{ item.count }} record(s)</span>
+                            </div>
+                            <p class="insight-message">{{ item.message }}</p>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if executive_report.product_insights %}
+            <div class="summary-card full-width">
+                <div class="summary-body">
+                    <h3>Product Insights</h3>
+                    <ul class="insight-list">
+                        {% for item in executive_report.product_insights %}
+                        <li>
+                            <div class="insight-head">
+                                <strong>{{ item.product }}</strong>
+                                <span class="assessment-badge {{ item.assessment | lower | replace(' ', '-') }}">
+                                    {{ item.assessment }}
+                                </span>
+                            </div>
+                            <p class="insight-message">{{ item.message }}</p>
+                            <p class="insight-detail">
+                                Volume: <strong>{{ item.feedback_count }}</strong>
+                                &nbsp;&middot;&nbsp;
+                                Positive: <strong>{{ item.positive_rate }}</strong>
+                                &nbsp;&middot;&nbsp;
+                                Negative: <strong>{{ item.negative_rate }}</strong>
+                            </p>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if executive_report.recommendations %}
+            <div class="summary-card full-width recommendations-card">
+                <div class="summary-body">
+                    <h3>Recommendations</h3>
+                    <ol class="recommendation-list">
+                        {% for rec in executive_report.recommendations %}
+                        <li>{{ rec }}</li>
+                        {% endfor %}
+                    </ol>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <!-- ============================================ -->
+        <!-- KPI CARDS                                     -->
+        <!-- ============================================ -->
+        <section class="kpi-section">
+            <div class="section-heading">
+                <h2>Business KPIs</h2>
+            </div>
+            <div class="kpi-grid">
+
+                <div class="kpi-card">
+                    <span class="kpi-label">Total Feedback</span>
+                    <span class="kpi-value">{{ kpis.total_feedback }}</span>
+                </div>
+
+                <div class="kpi-card">
+                    <span class="kpi-label">Unique Customers</span>
+                    <span class="kpi-value">{{ kpis.unique_customers }}</span>
+                </div>
+
+                <div class="kpi-card kpi-positive">
+                    <span class="kpi-label">Positive Rate</span>
+                    <span class="kpi-value">{{ kpis.positive_rate }}<small>%</small></span>
+                </div>
+
+                <div class="kpi-card kpi-neutral">
+                    <span class="kpi-label">Neutral Rate</span>
+                    <span class="kpi-value">{{ kpis.neutral_rate }}<small>%</small></span>
+                </div>
+
+                <div class="kpi-card kpi-negative">
+                    <span class="kpi-label">Negative Rate</span>
+                    <span class="kpi-value">{{ kpis.negative_rate }}<small>%</small></span>
+                </div>
+
+                <div class="kpi-card">
+                    <span class="kpi-label">Sentiment Balance</span>
+                    <span class="kpi-value">{{ kpis.sentiment_balance }}</span>
+                </div>
+
+                <div class="kpi-card">
+                    <span class="kpi-label">Avg Sentiment Score</span>
+                    <span class="kpi-value">{{ kpis.average_sentiment_score }}</span>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- CHARTS                                        -->
+        <!-- ============================================ -->
+        <section class="charts-section">
+            <div class="section-heading">
+                <h2>Visual Analytics</h2>
+            </div>
+            <div class="charts-grid">
+
+                <div class="chart-card">
+                    <h3>Sentiment Distribution</h3>
+                    <div class="chart-wrap">
+                        <canvas id="sentimentChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Product Sentiment Comparison</h3>
+                    <div class="chart-wrap">
+                        <canvas id="productChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Complaint Categories</h3>
+                    <div class="chart-wrap">
+                        <canvas id="complaintChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Top Keywords</h3>
+                    <div class="chart-wrap">
+                        <canvas id="keywordChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- PRODUCT PERFORMANCE                           -->
+        <!-- ============================================ -->
+        <section class="table-section">
+            <div class="section-heading">
+                <h2>Product Performance</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Total</th>
+                            <th>Positive</th>
+                            <th>Neutral</th>
+                            <th>Negative</th>
+                            <th>Positive %</th>
+                            <th>Negative %</th>
+                            <th>Avg Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in kpis.product_summary %}
+                        <tr>
+                            <td><strong>{{ product.product }}</strong></td>
+                            <td>{{ product.total_feedback }}</td>
+                            <td class="cell-positive">{{ product.positive }}</td>
+                            <td class="cell-neutral">{{ product.neutral }}</td>
+                            <td class="cell-negative">{{ product.negative }}</td>
+                            <td>{{ product.positive_rate }}%</td>
+                            <td>{{ product.negative_rate }}%</td>
+                            <td>{{ product.average_sentiment_score }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- COMPLAINT SUMMARY                             -->
+        <!-- ============================================ -->
+        <section class="table-section">
+            <div class="section-heading">
+                <h2>Complaint Summary</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for complaint in kpis.complaint_summary %}
+                        <tr>
+                            <td><strong>{{ complaint.category }}</strong></td>
+                            <td>{{ complaint.count }}</td>
+                            <td>{{ complaint.percentage }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TOP KEYWORDS                                  -->
+        <!-- ============================================ -->
+        <section class="table-section">
+            <div class="section-heading">
+                <h2>Top Keywords</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Keyword</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for keyword in kpis.top_keywords %}
+                        <tr>
+                            <td><strong>{{ keyword.keyword }}</strong></td>
+                            <td>{{ keyword.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- DETAILED FEEDBACK                             -->
+        <!-- ============================================ -->
+        <section class="table-section">
+            <div class="section-heading">
+                <h2>Detailed Feedback</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Customer ID</th>
+                            <th>Product</th>
+                            <th>Feedback</th>
+                            <th>Sentiment</th>
+                            <th>Score</th>
+                            <th>Complaints</th>
+                            <th>Keywords</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td>{{ record.customer_id }}</td>
+                            <td>{{ record.product }}</td>
+                            <td class="cell-feedback">{{ record.feedback }}</td>
+                            <td>
+                                <span class="sentiment-badge sentiment-{{ record.sentiment | lower }}">
+                                    {{ record.sentiment }}
+                                </span>
+                            </td>
+                            <td>{{ record.sentiment_score }}</td>
+                            <td class="cell-muted">{{ record.complaint_categories | join(', ') }}</td>
+                            <td class="cell-muted">
+                                {% for kw in record.keywords %}
+                                {{ kw.keyword }}{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- BACKEND INFO                                  -->
+        <!-- ============================================ -->
+        <section class="backend-section">
+            <div class="section-heading">
+                <h2>Active Analysis Backends</h2>
+            </div>
+            <div class="backend-grid">
+                <div class="backend-card">
+                    <span class="backend-label">Sentiment</span>
+                    <span class="backend-value">{{ backend_info.sentiment }}</span>
+                </div>
+                <div class="backend-card">
+                    <span class="backend-label">Keywords</span>
+                    <span class="backend-value">{{ backend_info.keywords }}</span>
+                </div>
+                <div class="backend-card">
+                    <span class="backend-label">Complaints</span>
+                    <span class="backend-value">{{ backend_info.complaints }}</span>
+                </div>
+                <div class="backend-card">
+                    <span class="backend-label">Analytics</span>
+                    <span class="backend-value">{{ backend_info.analytics }}</span>
+                </div>
+            </div>
+        </section>
+
+        {% endif %}
+
+    </main>
+
+    <footer class="app-footer">
+        <div class="container">
+            <p>Customer Feedback Intelligence &mdash; V1</p>
+        </div>
+    </footer>
+
+    {% if kpis %}
+    <script>
+        window.dashboardData = {
+            sentiment_counts: {{ kpis.sentiment_counts | tojson }},
+            product_summary: {{ kpis.product_summary | tojson }},
+            complaint_summary: {{ kpis.complaint_summary | tojson }},
+            top_keywords: {{ kpis.top_keywords | tojson }}
+        };
+    </script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        // File input display name
+        (function () {
+            const input = document.getElementById("file");
+            const label = document.getElementById("fileName");
+            if (input && label) {
+                input.addEventListener("change", function () {
+                    label.textContent = this.files.length
+                        ? this.files[0].name
+                        : "No file chosen";
+                });
+            }
+        })();
+    </script>
+    {% endif %}
+
+</body>
+</html>
